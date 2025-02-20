@@ -1,37 +1,18 @@
-FROM openjdk:8-jre-slim
+# Use OpenJDK 11 slim as the base image
+FROM naivedh/owasp-dependency:latest
 
-ENV user=dependencycheck
-ENV version_url=https://jeremylong.github.io/DependencyCheck/current.txt
-ENV download_url=https://dl.bintray.com/jeremy-long/owasp
-ENV data_dir=/usr/share/dependency-check/data
+# Declare build argument for NVD API key
+ARG NVD_API_KEY
 
-RUN apt-get update                                                          && \
-    apt-get install -y --no-install-recommends wget ruby mono-runtime       && \
-    gem install bundle-audit                                                && \
-    gem cleanup
+# Set environment variable for NVD API key (ensure it's available at runtime)
+ENV NVD_API_KEY=${NVD_API_KEY}
 
-RUN wget -O /tmp/current.txt ${version_url}                                 && \
-    version=$(cat /tmp/current.txt)                                         && \
-    file="dependency-check-${version}-release.zip"                          && \
-    wget "$download_url/$file"                                              && \
-    unzip ${file}                                                           && \
-    rm ${file}                                                              && \
-    mv dependency-check /usr/share/                                         && \
-    useradd -ms /bin/bash ${user}                                           && \
-    chown -R ${user}:${user} /usr/share/dependency-check                    && \
-    mkdir /report                                                           && \
-    chown -R ${user}:${user} /report                                        && \
-    apt-get remove --purge -y wget                                          && \
-    apt-get autoremove -y                                                   && \
-    rm -rf /var/lib/apt/lists/* /tmp/*
+# Update NVD data during build
+RUN /usr/local/bin/dependency-check --updateonly --nvdApiKey ${NVD_API_KEY} && \
+    rm -rf /opt/dependency-check/data/.lock
 
-USER ${user}
+# Set entrypoint to Dependency-Check script with environment variable substitution
+ENTRYPOINT ["/usr/local/bin/dependency-check"]
 
-VOLUME ["/src", "/usr/share/dependency-check/data", "/report"]
-
-WORKDIR /src
-
-RUN /usr/share/dependency-check/bin/dependency-check.sh --updateonly --data ${data_dir} || true
-
-CMD ["--help"]
-ENTRYPOINT ["/usr/share/dependency-check/bin/dependency-check.sh"]
+# Default command to scan the working directory
+CMD ["--scan", ".", "--nvdApiKey", "${NVD_API_KEY}"]
